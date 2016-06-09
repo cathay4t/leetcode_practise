@@ -9,6 +9,7 @@ all: $(EXEC) check_mem_leak check_time
 
 check_mem_leak: $(EXEC)
 	valgrind $(VALGRIND_OPTS) ./$(EXEC)
+	echo
 
 check_time: $(EXEC)
 	time -p ./$(EXEC)
