@@ -1,3 +1,3 @@
 EXEC = add_two_num
 
-include ../Makefile.inc
+include ../../Makefile.inc

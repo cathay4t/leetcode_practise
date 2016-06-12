@@ -1,3 +1,3 @@
-EXEC = two_sum
+EXEC = lswrc
 
 include ../../Makefile.inc
