@@ -1,0 +1,6 @@
+[package]
+name = "h121_stock_traid"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
