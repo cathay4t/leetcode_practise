@@ -5,10 +5,23 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 #[derive(Default, PartialEq, Clone)]
 struct Entry {
     key: i32,
-    value: i32,
+    data: i32,
     // The Rc and RefCell is not thread safe(not Sync)
     prev: Option<Rc<RefCell<Entry>>>,
     next: Option<Rc<RefCell<Entry>>>,
+}
+
+impl Entry {
+    fn remove(&mut self) {
+        let prev = self.prev.take();
+        let next = self.next.take();
+        if let Some(p) = prev.clone() {
+            p.borrow_mut().next = next.clone();
+        }
+        if let Some(n) = next.clone() {
+            n.borrow_mut().prev = prev.clone();
+        }
+    }
 }
 
 impl std::fmt::Display for Entry {
@@ -16,7 +29,7 @@ impl std::fmt::Display for Entry {
         &self,
         f: &mut std::fmt::Formatter<'_>,
     ) -> Result<(), std::fmt::Error> {
-        write!(f, "{}:{} ", self.key, self.value)?;
+        write!(f, "{}:{} ", self.key, self.data)?;
         if let Some(prev) = self.prev.as_ref() {
             write!(f, "prev: {} ", prev.borrow().key)?;
         } else {
@@ -75,8 +88,12 @@ impl std::fmt::Display for LRUCache {
  */
 impl LRUCache {
     fn new(capacity: i32) -> Self {
-        // TODO: better error handling on capacity < 0
-        let capacity: usize = usize::try_from(capacity).ok().unwrap();
+        let capacity: usize = if capacity < 0 {
+            // Reject everything
+            0usize
+        } else {
+            capacity as usize
+        };
         Self {
             data: HashMap::with_capacity(capacity),
             order_head: None,
@@ -85,59 +102,7 @@ impl LRUCache {
         }
     }
 
-    fn get(&mut self, key: i32) -> i32 {
-        println!("HAHA739 get {key}");
-        if let Some(value) = self.remove(&key) {
-            self.push(key, value);
-            value
-        } else {
-            -1
-        }
-    }
-
-    fn remove(&mut self, key: &i32) -> Option<i32> {
-        if let Some(entry) = self.data.remove(key) {
-            // is head
-            if entry.borrow().prev.is_none() {
-                self.order_head = entry.borrow().next.clone();
-            }
-            // is tail
-            if entry.borrow().next.is_none() {
-                self.order_tail = entry.borrow().prev.clone();
-            }
-
-            if let Some(prev) = entry.borrow().prev.as_ref() {
-                prev.borrow_mut().next = entry.borrow().next.clone();
-            }
-
-            if let Some(next) = entry.borrow().next.as_ref() {
-                next.borrow_mut().prev = entry.borrow().prev.clone();
-            }
-
-            Some(entry.borrow().value)
-        } else {
-            None
-        }
-    }
-
-    fn remove_tail(&mut self) {
-        if let Some(entry) = self.order_tail.take() {
-            self.remove(&entry.borrow().key);
-        }
-    }
-
-    fn push(&mut self, key: i32, value: i32) {
-        if self.data.get(&key).is_some() {
-            panic!("Duplicate key {key} found, run self.remove() first");
-        }
-
-        let entry = Rc::new(RefCell::new(Entry {
-            key,
-            value,
-            prev: None,
-            next: self.order_head.clone(),
-        }));
-
+    fn append_to_head(&mut self, entry: Rc<RefCell<Entry>>) {
         if let Some(order_head) = self.order_head.as_mut() {
             (*order_head.borrow_mut()).prev = Some(entry.clone());
             (*entry.borrow_mut()).next = Some(order_head.clone());
@@ -146,20 +111,102 @@ impl LRUCache {
         } else {
             self.order_head = Some(entry.clone());
         }
+    }
 
-        if self.order_tail.is_none() {
-            self.order_tail = Some(entry.clone());
+    fn get(&mut self, key: i32) -> i32 {
+        if self.capacity == 0 {
+            return -1;
         }
+        let Some(entry) = self.data.get(&key).cloned() else {
+            return -1;
+        };
+        if self.capacity == 1 {
+            // no change required for capacity 1
+            entry.borrow().data
+        } else {
+            if entry.borrow().prev.is_none() {
+                // entry is already head, do nothing
+                return entry.borrow().data;
+            }
 
-        self.data.insert(key, entry.clone());
+            // if entry is tail, update tail
+            if entry.borrow().next.is_none() {
+                self.order_tail = entry.borrow().prev.clone();
+                if let Some(order_tail) = self.order_tail.as_ref() {
+                    (*order_tail.borrow_mut()).next = None;
+                }
+            }
+            // Remove it from chain
+            entry.borrow_mut().remove();
+            // Append to head
+            self.append_to_head(entry.clone());
+            entry.borrow().data
+        }
     }
 
     fn put(&mut self, key: i32, value: i32) {
-        self.remove(&key);
-        if self.data.len() == self.capacity {
-            self.remove_tail();
+        if self.capacity == 0 {
+            return;
         }
-        self.push(key, value);
+        let entry = Rc::new(RefCell::new(Entry {
+            key: key,
+            data: value,
+            prev: None,
+            // We are not sure next yet, if we are replacing head, we should
+            // point to old data, hence set to None for now
+            next: None,
+        }));
+        if self.capacity == 1 {
+            self.data = HashMap::new();
+            self.data.insert(key, entry.clone());
+            self.order_head = Some(entry.clone());
+            self.order_tail = Some(entry);
+            return;
+        }
+        if let Some(old_entry) = self.data.insert(key, entry.clone()) {
+            // overriding
+            if old_entry.borrow().prev.is_none() {
+                // old data is head
+                (*entry.borrow_mut()).next = old_entry.borrow().next.clone();
+                if let Some(old_entry_next) = old_entry.borrow().next.as_ref() {
+                    (*old_entry_next.borrow_mut()).prev = Some(entry.clone());
+                }
+                self.order_head = None;
+                // old data is also tail
+                if old_entry.borrow().next.is_none() {
+                    // old data is also head
+                    self.order_tail = Some(entry.clone());
+                }
+            } else if old_entry.borrow().next.is_none() {
+                // old data is tail but not head
+                self.order_tail = old_entry.borrow().prev.clone();
+                old_entry.borrow_mut().remove();
+            } else {
+                // old data is in middle
+                old_entry.borrow_mut().remove();
+            }
+            self.append_to_head(entry.clone());
+        } else {
+            self.append_to_head(entry.clone());
+            if self.order_tail.is_none() {
+                self.order_tail = Some(entry.clone());
+                return;
+            }
+        }
+
+        // Remove if exceeded capacity
+        if self.data.len() > self.capacity {
+            if let Some(tail) = self.order_tail.take() {
+                self.data.remove(&tail.borrow().key);
+                self.order_tail = tail.borrow().prev.clone();
+                tail.borrow_mut().remove();
+            } else {
+                panic!(
+                    "BUG: Exceeded capacity but got empty tail: {:?}",
+                    self.data.keys()
+                );
+            }
+        }
     }
 }
 
@@ -171,6 +218,40 @@ impl LRUCache {
  */
 
 fn main() {
+    let mut lru_cache = LRUCache::new(2);
+    lru_cache.put(2, 1);
+    lru_cache.put(2, 2);
+    assert_eq!(lru_cache.get(2), 2);
+    lru_cache.put(3, 3);
+    assert_eq!(lru_cache.get(2), 2);
+    lru_cache.put(1, 1);
+    lru_cache.put(4, 1);
+    assert_eq!(lru_cache.get(2), -1);
+
+
+    let mut lru_cache = LRUCache::new(1);
+    lru_cache.put(2, 1);
+    assert_eq!(lru_cache.get(2), 1);
+    lru_cache.put(3, 2);
+    assert_eq!(lru_cache.get(2), -1);
+    assert_eq!(lru_cache.get(3), 2);
+
+    let mut lru_cache = LRUCache::new(2);
+    lru_cache.put(2, 1);
+    lru_cache.put(2, 2);
+    assert_eq!(lru_cache.get(2), 2);
+    lru_cache.put(1, 1);
+    lru_cache.put(4, 1);
+    assert_eq!(lru_cache.get(2), -1);
+
+    let mut lru_cache = LRUCache::new(2);
+    lru_cache.put(2, 1);
+    lru_cache.put(1, 1);
+    lru_cache.put(2, 3);
+    lru_cache.put(4, 1);
+    assert_eq!(lru_cache.get(1), -1);
+    assert_eq!(lru_cache.get(2), 3);
+
     let expected = vec![
         i32::MAX,
         i32::MAX,
