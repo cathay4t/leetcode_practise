@@ -74,9 +74,7 @@ impl std::fmt::Display for LRUCache {
  * If you need a mutable reference, change it to `&mut self` instead.
  */
 impl LRUCache {
-    fn new(capacity: i32) -> Self {
-        // TODO: better error handling on capacity < 0
-        let capacity: usize = usize::try_from(capacity).ok().unwrap();
+    fn new(capacity: usize) -> Self {
         Self {
             data: HashMap::with_capacity(capacity),
             order_head: None,
@@ -85,81 +83,75 @@ impl LRUCache {
         }
     }
 
-    fn get(&mut self, key: i32) -> i32 {
-        println!("HAHA739 get {key}");
-        if let Some(value) = self.remove(&key) {
-            self.push(key, value);
-            value
-        } else {
-            -1
+    fn put(&mut self, key: i32, value: i32) {
+        // TODO: To improve performance, reuse existing
+        self.remove(&key);
+        if self.data.len() == self.capacity {
+            self.remove_tail()
         }
-    }
-
-    fn remove(&mut self, key: &i32) -> Option<i32> {
-        if let Some(entry) = self.data.remove(key) {
-            // is head
-            if entry.borrow().prev.is_none() {
-                self.order_head = entry.borrow().next.clone();
-            }
-            // is tail
-            if entry.borrow().next.is_none() {
-                self.order_tail = entry.borrow().prev.clone();
-            }
-
-            if let Some(prev) = entry.borrow().prev.as_ref() {
-                prev.borrow_mut().next = entry.borrow().next.clone();
-            }
-
-            if let Some(next) = entry.borrow().next.as_ref() {
-                next.borrow_mut().prev = entry.borrow().prev.clone();
-            }
-
-            Some(entry.borrow().value)
-        } else {
-            None
-        }
-    }
-
-    fn remove_tail(&mut self) {
-        if let Some(entry) = self.order_tail.take() {
-            self.remove(&entry.borrow().key);
-        }
+        self.push(key, value);
     }
 
     fn push(&mut self, key: i32, value: i32) {
         if self.data.get(&key).is_some() {
-            panic!("Duplicate key {key} found, run self.remove() first");
+            panic!("Duplicate key {key} found, should remove first");
         }
-
         let entry = Rc::new(RefCell::new(Entry {
             key,
             value,
             prev: None,
             next: self.order_head.clone(),
         }));
-
-        if let Some(order_head) = self.order_head.as_mut() {
-            (*order_head.borrow_mut()).prev = Some(entry.clone());
-            (*entry.borrow_mut()).next = Some(order_head.clone());
-            (*entry.borrow_mut()).prev = None;
-            *order_head = entry.clone();
-        } else {
-            self.order_head = Some(entry.clone());
+        if let Some(old_head) = self.order_head.take() {
+            old_head.borrow_mut().prev = Some(entry.clone());
         }
-
+        self.order_head = Some(entry.clone());
         if self.order_tail.is_none() {
             self.order_tail = Some(entry.clone());
         }
-
-        self.data.insert(key, entry.clone());
+        if self.data.len() == self.capacity {
+            self.remove_tail()
+        }
+        self.data.insert(key, entry);
     }
 
-    fn put(&mut self, key: i32, value: i32) {
-        self.remove(&key);
-        if self.data.len() == self.capacity {
-            self.remove_tail();
+    fn remove_tail(&mut self) {
+        if let Some(tail) = self.order_tail.take() {
+            // TODO: To improve performance, reuse existing instead of
+            // search again
+            self.remove(&tail.borrow().key);
         }
-        self.push(key, value);
+    }
+
+    fn remove(&mut self, key: &i32) -> Option<i32> {
+        if let Some(entry) = self.data.remove(key) {
+            if entry.borrow().prev.is_none() {
+                // entry is head
+                self.order_head = entry.borrow().next.clone();
+            }
+            if entry.borrow().next.is_none() {
+                // entry is tail
+                self.order_tail = entry.borrow().prev.clone();
+            }
+            if let Some(prev) = entry.borrow().prev.as_ref() {
+                prev.borrow_mut().next = entry.borrow().next.clone();
+            }
+            if let Some(next) = entry.borrow().next.as_ref() {
+                next.borrow_mut().prev = entry.borrow().prev.clone();
+            }
+            Some(entry.borrow().value)
+        } else {
+            None
+        }
+    }
+
+    fn get(&mut self, key: i32) -> i32 {
+        if let Some(val) = self.remove(&key) {
+            self.push(key, val);
+            val
+        } else {
+            -1
+        }
     }
 }
 
