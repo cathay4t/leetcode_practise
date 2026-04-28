@@ -63,10 +63,6 @@ where
         BstIter { stack }
     }
 
-    fn search<'b>(&'b self, value: &T) -> Option<&'b Box<BstNode<T>>> {
-        None
-    }
-
     fn insert(&mut self, value: T) {
         log::debug!("Insert {value} to {self}");
         if let Some(root) = self.root.as_mut() {
@@ -99,63 +95,58 @@ where
     T: CanBeNode,
 {
     fn insert(&mut self, value: T) {
-        if value > self.value {
-            match self.right.as_mut() {
-                Some(right) => right.insert(value),
-                None => self.right = Some(Box::new(BstNode::new(value))),
+        if value < self.value {
+            if let Some(left) = self.left.as_mut() {
+                left.insert(value);
+            } else {
+                self.left = Some(Box::new(BstNode::new(value)));
             }
-        } else if value < self.value {
-            match self.left.as_mut() {
-                Some(left) => left.insert(value),
-                None => self.left = Some(Box::new(BstNode::new(value))),
+        } else if value > self.value {
+            if let Some(right) = self.right.as_mut() {
+                right.insert(value);
+            } else {
+                self.right = Some(Box::new(BstNode::new(value)));
             }
         } else {
-            log::info!("Ignore insertion for duplicate value");
+            log::info!("Ignore duplicate key");
         }
     }
 
     // Remove the minimum child from tree
     // Return the child value and new tree
-    fn remove_min_child(mut self: Box<Self>) -> (T, Option<Box<BstNode<T>>>) {
-        match self.left {
-            Some(left) => {
-                let (val, new_left) = left.remove_min_child();
-                self.left = new_left;
-                (val, Some(self))
-            }
-            None => (self.value, self.right),
+    fn remove_min_child(mut self: Box<Self>) -> (T, Option<Box<Self>>) {
+        if let Some(left) = self.left.take() {
+            let (val, new_left) = left.remove_min_child();
+            self.left = new_left;
+            (val, Some(self))
+        } else {
+            (self.value, self.right)
         }
     }
 
     /// Return the new tree root
-    fn remove(mut self: Box<Self>, value: T) -> Option<Box<BstNode<T>>> {
-        match value.cmp(&self.value) {
-            Ordering::Less => {
-                if let Some(left) = self.left.take() {
-                    self.left = left.remove(value);
-                }
-                Some(self)
+    fn remove(mut self: Box<Self>, value: T) -> Option<Box<Self>> {
+        if value < self.value {
+            if let Some(left) = self.left.take() {
+                self.left = left.remove(value);
             }
-            Ordering::Greater => {
-                if let Some(right) = self.right.take() {
-                    self.right = right.remove(value);
-                }
-                Some(self)
+            Some(self)
+        } else if value > self.value {
+            if let Some(right) = self.right.take() {
+                self.right = right.remove(value);
             }
-            Ordering::Equal => {
-                match (self.left, self.right) {
-                    (None, None) => None,
-                    (Some(left), None) => Some(left),
-                    (None, Some(right)) => Some(right),
-                    (Some(left), Some(right)) => {
-                        // replace with minimum bigger child
-                        let (value, new_right) = right.remove_min_child();
-                        Some(Box::new(BstNode {
-                            value,
-                            left: Some(left),
-                            right: new_right,
-                        }))
-                    }
+            Some(self)
+        } else {
+            match (self.left.take(), self.right.take()) {
+                (None, None) => None,
+                (Some(v), None) | (None, Some(v)) => Some(v),
+                (Some(left), Some(right)) => {
+                    let (value, new_right) = right.remove_min_child();
+                    Some(Box::new(Self {
+                        value,
+                        left: Some(left),
+                        right: new_right,
+                    }))
                 }
             }
         }
