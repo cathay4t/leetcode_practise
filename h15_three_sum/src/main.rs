@@ -2,71 +2,64 @@
 
 // 15. 三数之和
 
-fn main() {
+impl Solution {
     pub fn three_sum(nums: Vec<i32>) -> Vec<Vec<i32>> {
-        use std::{collections::HashMap, ops::Neg};
-
-        fn two_sum(nums: &[i32], target: i32) -> Vec<(i32, i32)> {
-            // <number, index>
-            let mut hashed: HashMap<i32, usize> = HashMap::new();
-
-            let mut ret: Vec<(i32, i32)> = Vec::new();
-
-            let mut dup_pushed = false;
-            for index in 0..nums.len() {
-                let v = nums[index];
-                if v * 2 == target && hashed.contains_key(&v) {
-                    if !dup_pushed {
-                        dup_pushed = true;
-                        ret.push((v, v));
-                    }
-                } else {
-                    hashed.insert(v, index);
-                }
-            }
-
-            for index in hashed.values().map(|v| *v) {
-                let v = nums[index];
-                let remains = target - v;
-                if let Some(other_index) = hashed.get(&remains)
-                    && *other_index != index
-                {
-                    let other = nums[*other_index];
-                    if v >= other {
-                        ret.push((other, v));
-                    }
-                }
-            }
-            ret
-        }
-
         let mut ret: Vec<Vec<i32>> = Vec::new();
+        let mut nums = nums;
 
         if nums.len() < 3 {
             return ret;
         }
-        let mut nums = nums;
-        nums.sort_unstable();
-        let mut pre_v = nums[nums.len() - 1];
-        for i in 0..(nums.len() - 2) {
-            if i != 0 && nums[i] == pre_v {
-                continue;
-            } else {
-                pre_v = nums[i];
-            }
-            let two_sums = two_sum(&nums[(i + 1)..], nums[i].neg());
 
-            for (b, c) in two_sums {
-                ret.push(vec![nums[i], b, c]);
+        nums.sort();
+
+        for i in 0..nums.len() {
+            let num_i = nums[i];
+            // first(smallest) number should always be less than zero
+            if num_i > 0 {
+                break;
+            }
+            // skip if the same number has checked before.
+            if i > 0 && nums[i - 1] == num_i {
+                continue;
+            }
+
+            let mut j = i + 1;
+            let mut k = nums.len() - 1;
+            while j < k {
+                let num_j = nums[j];
+                let num_k = nums[k];
+                let sum = num_i + num_j + num_k;
+                if sum < 0 {
+                    j += 1;
+                } else if sum > 0 {
+                    k -= 1;
+                } else {
+                    ret.push(vec![num_i, num_j, num_k]);
+                    j += 1;
+                    k -= 1;
+                    // skip same number
+                    while j < k && nums[j] == num_j {
+                        j += 1;
+                    }
+                    // skip same number
+                    while j < k && nums[k] == num_k {
+                        k -= 1;
+                    }
+                }
             }
         }
         ret
     }
+}
 
-    assert_eq!(
-        three_sum(vec![-1, 0, 1, 2, -1, -4]),
-        vec![vec![-1i32, 0, 1], vec![-1i32, -1, 2]]
-    );
-    assert_eq!(three_sum(vec![0, 0, 0]), vec![vec![0i32, 0, 0]]);
+struct Solution;
+
+fn main() {
+    let mut ret = Solution::three_sum(vec![-1, 0, 1, 1, 2, -1, -4]);
+    ret.sort_unstable();
+
+    assert_eq!(ret, vec![vec![-1i32, -1, 2], vec![-1i32, 0, 1]]);
+    assert_eq!(Solution::three_sum(vec![0, 0, 0]), vec![vec![0i32, 0, 0]]);
     println!("PASS");
 }
