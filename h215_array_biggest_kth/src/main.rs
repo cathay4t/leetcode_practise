@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use rand::RngExt;
+use rand::Rng;
 
 impl Solution {
     // include right
     fn partition(nums: &mut [i32], left: usize, right: usize) -> usize {
-        let pivot = rand::rng().random_range(left..=right);
+        let mut rng = rand::thread_rng();
+        let pivot = rng.gen_range(left..=right);
 
         let num_pivot = nums[pivot];
 
