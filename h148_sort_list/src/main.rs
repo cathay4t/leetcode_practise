@@ -35,8 +35,8 @@ where
         let mut fast = head;
         let mut slow = head;
 
-        while let Some(ff) = fast.as_ref().and_then(|f| f.next.as_ref()) {
-            fast = &ff.next;
+        while fast.as_ref().and_then(|f| f.next.as_ref()).is_some() {
+            fast = &fast.as_ref()?.next.as_ref()?.next;
             slow = &slow.as_ref()?.next;
         }
         // need to break as slow, need to change slow from as_ref() to as_mut()
@@ -131,6 +131,7 @@ fn main() {
     let mut list = ListNode::new(100i32);
     list.push(98);
     list.push(94);
+    list.push(93);
     list.push(100);
     println!("Before sort {:?}", list.iter().collect::<Vec<&i32>>());
     let list = ListNode::sort(Some(Box::new(list)));
@@ -141,7 +142,7 @@ fn main() {
 
     assert_eq!(
         list.unwrap().iter().map(|v| *v).collect::<Vec<i32>>(),
-        vec![94i32, 98, 100, 100]
+        vec![93, 94i32, 98, 100, 100]
     );
 
     println!("Pass!");
