@@ -1,149 +1,112 @@
 // SPDX-License-Identifier: Apache-2.0
 
-trait CanBeNode: PartialEq + Ord + std::fmt::Display {}
-
-impl<T> CanBeNode for T where T: PartialEq + Ord + std::fmt::Display {}
-
-struct ListNode<T>
-where
-    T: CanBeNode,
-{
-    val: T,
-    next: Option<Box<ListNode<T>>>,
+struct ListNode {
+    val: i32,
+    next: Option<Box<ListNode>>,
 }
 
-impl<T> ListNode<T>
-where
-    T: CanBeNode,
-{
-    fn sort(head: Option<Box<ListNode<T>>>) -> Option<Box<ListNode<T>>> {
-        // no need to sort empty or single node
-        if head.is_none() || head.as_ref()?.next.is_none() {
-            return head;
-        }
-
-        let right_half = Self::split_middle(&head);
-        let left_sorted = Self::sort(head);
-        let right_sorted = Self::sort(right_half);
-
-        Self::merge_sort(left_sorted, right_sorted)
+impl ListNode {
+    fn new(val: i32) -> Self {
+        Self { val, next: None }
     }
 
-    fn split_middle(
-        head: &Option<Box<ListNode<T>>>,
-    ) -> Option<Box<ListNode<T>>> {
-        let mut fast = head;
-        let mut slow = head;
+    fn to_vec(&self) -> Vec<i32> {
+        let mut ret = vec![self.val];
+
+        let mut cur = self.next.as_ref();
+        while let Some(c) = cur {
+            ret.push(c.val);
+            cur = c.next.as_ref()
+        }
+        ret
+    }
+}
+
+struct Solution;
+
+impl Solution {
+    fn split_middle(head: &Option<Box<ListNode>>) -> Option<Box<ListNode>> {
+        let mut slow = head.as_ref();
+        let mut fast = head.as_ref();
 
         while fast.as_ref().and_then(|f| f.next.as_ref()).is_some() {
-            fast = &fast.as_ref()?.next.as_ref()?.next;
-            slow = &slow.as_ref()?.next;
+            fast = fast.as_ref()?.next.as_ref()?.next.as_ref();
+            slow = slow.as_ref()?.next.as_ref();
         }
-        // need to break as slow, need to change slow from as_ref() to as_mut()
         #[allow(mutable_transmutes)]
-        let slow: &mut Option<Box<ListNode<T>>> =
+        let slow: &mut Option<Box<ListNode>> =
             unsafe { std::mem::transmute(slow) };
         slow.take()
     }
 
-    fn merge_sort(
-        mut left: Option<Box<ListNode<T>>>,
-        mut right: Option<Box<ListNode<T>>>,
-    ) -> Option<Box<ListNode<T>>> {
-        // we cannot generate dummy head because there is no T::empty()
-        // hence we need to find the first node.
-        let mut head = match (left.take(), right.take()) {
-            (Some(mut l), Some(mut r)) => {
-                // take the smallest as head
-                if l.val < r.val {
-                    left = l.next.take();
-                    right = Some(r);
-                    l
-                } else {
-                    right = r.next.take();
-                    left = Some(l);
-                    r
+    pub fn sort_list(head: Option<Box<ListNode>>) -> Option<Box<ListNode>> {
+        if head.as_ref()?.next.is_none() {
+            return head;
+        }
+
+        let right_half = Self::split_middle(&head);
+
+        let mut sorted_left = Self::sort_list(head);
+        let mut sorted_right = Self::sort_list(right_half);
+
+        let mut dummy_head = ListNode::new(0);
+        let mut tail = &mut dummy_head;
+
+        loop {
+            match (sorted_left.take(), sorted_right.take()) {
+                (Some(mut l), Some(mut r)) => {
+                    if l.val < r.val {
+                        sorted_left = l.next.take();
+                        sorted_right = Some(r);
+                        tail.next = Some(l);
+                        tail = tail.next.as_mut()?;
+                    } else if l.val > r.val {
+                        sorted_left = Some(l);
+                        sorted_right = r.next.take();
+                        tail.next = Some(r);
+                        tail = tail.next.as_mut()?;
+                    } else {
+                        sorted_left = l.next.take();
+                        sorted_right = r.next.take();
+                        l.next = Some(r);
+                        tail.next = Some(l);
+                        tail = tail.next.as_mut()?.next.as_mut()?;
+                    }
                 }
-            }
-            (Some(v), None) | (None, Some(v)) => {
-                return Some(v);
-            }
-            (None, None) => {
-                return None;
-            }
-        };
-        let mut tail = &mut head;
-
-        while let (Some(l), Some(r)) = (&left, &right) {
-            if l.val < r.val {
-                tail.next = left.take();
-                tail = tail.next.as_mut()?;
-                left = tail.next.take();
-            } else {
-                tail.next = right.take();
-                tail = tail.next.as_mut()?;
-                right = tail.next.take();
+                (Some(l), None) => {
+                    tail.next = Some(l);
+                    break;
+                }
+                (None, Some(r)) => {
+                    tail.next = Some(r);
+                    break;
+                }
+                (None, None) => break,
             }
         }
-        // at least one half if empty
-        tail.next = left.or(right);
 
-        Some(head)
-    }
-
-    fn push(&mut self, val: T) {
-        if let Some(next) = self.next.as_mut() {
-            next.push(val);
-        } else {
-            self.next = Some(Box::new(ListNode { val, next: None }));
-        }
-    }
-
-    fn new(val: T) -> Self {
-        Self { val, next: None }
-    }
-
-    fn iter(&self) -> impl Iterator<Item = &T> {
-        ListNodeIter { cur: Some(self) }
-    }
-}
-
-struct ListNodeIter<'a, T>
-where
-    T: CanBeNode,
-{
-    cur: Option<&'a ListNode<T>>,
-}
-
-impl<'a, T> Iterator for ListNodeIter<'a, T>
-where
-    T: CanBeNode,
-{
-    type Item = &'a T;
-    fn next(&mut self) -> Option<Self::Item> {
-        let cur = self.cur.take()?;
-        self.cur = cur.next.as_deref();
-        Some(&cur.val)
+        dummy_head.next.take()
     }
 }
 
 fn main() {
     let mut list = ListNode::new(100i32);
-    list.push(98);
-    list.push(94);
-    list.push(93);
-    list.push(100);
-    println!("Before sort {:?}", list.iter().collect::<Vec<&i32>>());
-    let list = ListNode::sort(Some(Box::new(list)));
-    println!(
-        "After sort  {:?}",
-        list.as_ref().unwrap().iter().collect::<Vec<&i32>>()
-    );
+    let mut node1 = ListNode::new(98);
+    let mut node2 = ListNode::new(94);
+    let mut node3 = ListNode::new(93);
+    let node4 = ListNode::new(100);
 
-    assert_eq!(
-        list.unwrap().iter().map(|v| *v).collect::<Vec<i32>>(),
-        vec![93, 94i32, 98, 100, 100]
-    );
+    node3.next = Some(Box::new(node4));
+    node2.next = Some(Box::new(node3));
+    node1.next = Some(Box::new(node2));
+    list.next = Some(Box::new(node1));
+
+    println!("Before sort {:?}", list.to_vec());
+    let list = Solution::sort_list(Some(Box::new(list)));
+
+    println!("After sort  {:?}", list.as_ref().unwrap().to_vec());
+
+    assert_eq!(list.unwrap().to_vec(), vec![93, 94i32, 98, 100, 100]);
 
     println!("Pass!");
 }
